@@ -1,10 +1,36 @@
+#Data in file"Primary data.Rdata" is used to run the code in file"Primary code.R" 
+#Loading data
+load("./Primary data.Rdata")
+
+
+#LVQ model for feature selection in HCC-related differentially abundant proteins
+#The data in file "DAPdata" is DIA-MS quantitative profiles of 34 HCC-related differentially abundant proteins after pre-processing and median normalization.
+#Loading packages and preprocessing data
+#install.packages("mlbench")
+#install.packages("caret")
+library(mlbench)
+library(caret)
+colnames(DAPdata)[1]<-"rank"
+DAPdata$rank<-ifelse(grepl("HCC",DAPdata$rank),1,0)
+DAPdata$rank<-as.factor(DAPdata$rank)
+# prepare training scheme
+control <- trainControl(method="repeatedcv", number=10, repeats=10)
+# train the LVQ model
+LVQmodel <- train(rank~., data=DAPdata, method="lvq", preProcess="scale", trControl=control)
+# estimate variable importance
+importance <- varImp(LVQmodel, scale=FALSE)
+#save importance
+write.csv(importance$importance,"importance.csv")
+# summarize importance
+print(importance)
+# plot importance
+plot(importance)
+
+
+#Randomforest model
 #The quantitative profiles in file "PRMdata" is exactly the same as that in file "Table S6. Targeted proteomic abundance profiles of 325 samples.csv".
 #You can run the code using "RPMdata" directly or after tidying and simplifying "Table S6"
-
-#Imputing data
-load("./PRMdata.Rdata")
-
-#Loading packages and preprocessing data
+#Loading packages and and preprocessing data
 #install.packages("randomForest")
 #install.packages("pROC")
 library(randomForest)
@@ -101,3 +127,18 @@ legend("bottomright",legend = c("P4",
        fill = c("red2","darkorchid","blue","green3"),
        col = c("red2","darkorchid","blue","green3"),
        text.font = 7,cex = 1.4)
+
+#Validation and visualization of ROC curve in prospective validation set of HCC early diagnosis
+colnames(prospective_data)[3]<-"rank"
+prospective_data$rank<-ifelse(grepl("HCC",prospective_data$rank),1,0)
+pros_randomforest <- randomForest(rank~HABP2+CD163+AFP+PIVKA.II,
+                                data = Traingset_data,
+                                ntree =500,
+                                mtry=2,
+                                importance=TRUE,
+                                proximity=TRUE)
+pros_pre_ran <- predict(pros_randomforest,newdata=prospective_data)
+pros_obs_p_ran = data.frame(pros_pre_ran,obs=prospective_data$rank)
+auc_pros <- roc(obs~pros_pre_ran,data=pros_obs_p_ran, smooth=T)
+plot(auc_pros,col="red2",print.auc=F,font=7,cex.axis=1.4,cex.lab=1.4,cex.main=1.6,
+     max.auc.polygon=F,print.thres=F,legend=T,main="Prospective Validation Set")
